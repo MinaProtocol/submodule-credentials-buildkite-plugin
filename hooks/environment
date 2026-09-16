@@ -1,0 +1,30 @@
+#!/bin/bash
+#
+# Buildkite environment hook.
+#
+# The agent sources this file, it does not execute it. Therefore do not call
+# `exit`, and do not set shell options that stay active after the hook ends.
+#
+# Buildkite agent 3.133.0 and later treat BUILDKITE_GIT_SUBMODULE_CLONE_CONFIG
+# as a protected variable. A pipeline can no longer set it; only an agent hook,
+# the agent configuration, or a plugin can. This hook is that plugin.
+
+_sc_org="${BUILDKITE_PLUGIN_SUBMODULE_CREDENTIALS_ORG:-o1-labs}"
+_sc_token_env="${BUILDKITE_PLUGIN_SUBMODULE_CREDENTIALS_TOKEN_ENV:-GH_SUBMODULE_TOKEN}"
+_sc_token="${!_sc_token_env:-}"
+
+if [[ -z "${_sc_token}" ]]; then
+  echo "submodule-credentials: ${_sc_token_env} is empty; submodule URLs are not rewritten"
+else
+  _sc_rewrite="url.https://x-access-token:${_sc_token}@github.com/${_sc_org}/.insteadOf=https://github.com/${_sc_org}/"
+
+  if [[ -n "${BUILDKITE_GIT_SUBMODULE_CLONE_CONFIG:-}" ]]; then
+    export BUILDKITE_GIT_SUBMODULE_CLONE_CONFIG="${BUILDKITE_GIT_SUBMODULE_CLONE_CONFIG},${_sc_rewrite}"
+  else
+    export BUILDKITE_GIT_SUBMODULE_CLONE_CONFIG="${_sc_rewrite}"
+  fi
+
+  echo "submodule-credentials: submodule URLs under github.com/${_sc_org}/ now use ${_sc_token_env}"
+fi
+
+unset _sc_org _sc_token_env _sc_token _sc_rewrite
