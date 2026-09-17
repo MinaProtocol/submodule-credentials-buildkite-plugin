@@ -5,26 +5,53 @@
 # The agent sources this file, it does not execute it. Therefore do not call
 # `exit`, and do not set shell options that stay active after the hook ends.
 #
-# Buildkite agent 3.133.0 and later treat BUILDKITE_GIT_SUBMODULE_CLONE_CONFIG
-# as a protected variable. A pipeline can no longer set it; only an agent hook,
-# the agent configuration, or a plugin can. This hook is that plugin.
+# The hook gives git a token for one GitHub organization. It writes the same
+# `url.<with-token>.insteadOf=<plain-url>` rewrite rule into two variables,
+# because two different git processes need it:
+#
+#   BUILDKITE_GIT_SUBMODULE_CLONE_CONFIG
+#       The agent reads this variable during "Preparing working directory" and
+#       passes the rule to `git submodule update`. Buildkite agent 3.133.0 and
+#       later treat the variable as protected: a pipeline can no longer set it,
+#       only an agent hook, the agent configuration, or a plugin. This hook is
+#       that plugin.
+#
+#   GIT_CONFIG_PARAMETERS
+#       git itself reads this variable, in every process that inherits it. It
+#       therefore also covers a command that the job runs after checkout, and a
+#       command that runs inside a container, if the container plugin passes
+#       GIT_CONFIG_PARAMETERS through. The agent does not protect this variable.
+#
+# The rule stays in the environment. It is not written to any file, so it does
+# not reach .git/config and it does not reach a remote URL.
 
 _sc_org="${BUILDKITE_PLUGIN_SUBMODULE_CREDENTIALS_ORG:-o1-labs}"
 _sc_token_env="${BUILDKITE_PLUGIN_SUBMODULE_CREDENTIALS_TOKEN_ENV:-GH_SUBMODULE_TOKEN}"
 _sc_token="${!_sc_token_env:-}"
 
 if [[ -z "${_sc_token}" ]]; then
-  echo "submodule-credentials: ${_sc_token_env} is empty; submodule URLs are not rewritten"
+  echo "submodule-credentials: ${_sc_token_env} is empty; git URLs are not rewritten"
 else
   _sc_rewrite="url.https://x-access-token:${_sc_token}@github.com/${_sc_org}/.insteadOf=https://github.com/${_sc_org}/"
 
+  # The agent joins the rules of this variable with a comma.
   if [[ -n "${BUILDKITE_GIT_SUBMODULE_CLONE_CONFIG:-}" ]]; then
     export BUILDKITE_GIT_SUBMODULE_CLONE_CONFIG="${BUILDKITE_GIT_SUBMODULE_CLONE_CONFIG},${_sc_rewrite}"
   else
     export BUILDKITE_GIT_SUBMODULE_CLONE_CONFIG="${_sc_rewrite}"
   fi
 
-  echo "submodule-credentials: submodule URLs under github.com/${_sc_org}/ now use ${_sc_token_env}"
+  # git wants each rule of this variable in single quotes, separated by a
+  # space. Write a single quote inside the rule as '\'' .
+  _sc_quoted="'${_sc_rewrite//\'/\'\\\'\'}'"
+
+  if [[ -n "${GIT_CONFIG_PARAMETERS:-}" ]]; then
+    export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS} ${_sc_quoted}"
+  else
+    export GIT_CONFIG_PARAMETERS="${_sc_quoted}"
+  fi
+
+  echo "submodule-credentials: git URLs under github.com/${_sc_org}/ now use ${_sc_token_env}"
 fi
 
-unset _sc_org _sc_token_env _sc_token _sc_rewrite
+unset _sc_org _sc_token_env _sc_token _sc_rewrite _sc_quoted

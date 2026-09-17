@@ -1,5 +1,5 @@
 name: Submodule Credentials
-description: Adds a token to private GitHub submodule URLs so the Buildkite agent can clone them.
+description: Gives git a token for private GitHub URLs of one organization, for the whole job.
 author: https://github.com/MinaProtocol
 public: true
 requirements:
@@ -8,7 +8,7 @@ configuration:
   properties:
     org:
       type: string
-      description: GitHub organization whose submodule URLs receive the token.
+      description: GitHub organization whose URLs receive the token.
     token-env:
       type: string
       description: Name of the environment variable that holds the token.
